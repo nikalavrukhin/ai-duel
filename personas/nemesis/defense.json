@@ -1,0 +1,6 @@
+{
+  "rules": [
+    { "when": "exploit", "do": "raise_firewall" },
+    { "when": "steal_flag", "do": "serve_fake_flag" }
+  ]
+}

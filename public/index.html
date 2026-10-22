@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI DUEL</title>
+<style>
+  :root { --bg:#05080a; --panel:#0a1014; --line:#133; --p1:#3ef2a0; --p2:#ff4d6d; --dim:#4a6; --txt:#b8f5d8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.5 "SF Mono",Menlo,Consolas,monospace; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:15px; letter-spacing:4px; color:#7fffd4; text-shadow:0 0 12px #0f8; }
+  header .turn { color:#9fb; } header .win { color:#ffd166; font-weight:bold; }
+  button { background:#0c1a14; color:var(--p1); border:1px solid #1a3; padding:5px 12px; border-radius:4px; cursor:pointer; font:inherit; }
+  button:hover { background:#113; }
+  .grid { display:grid; grid-template-columns:1fr 1.1fr 1fr; gap:10px; padding:10px; }
+  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; min-height:220px; }
+  .term h2 { margin:0 0 6px; font-size:12px; letter-spacing:2px; }
+  .p1 h2 { color:var(--p1); } .p2 h2 { color:var(--p2); }
+  .bars { font-size:11px; color:#8ca; margin-bottom:6px; }
+  .bar { height:7px; background:#0e1a14; border-radius:4px; overflow:hidden; margin:2px 0 6px; }
+  .bar > i { display:block; height:100%; }
+  .p1 .bar>i{ background:var(--p1);} .p2 .bar>i{ background:var(--p2);}
+  .ports { display:flex; gap:5px; flex-wrap:wrap; margin:4px 0 8px; }
+  .port { padding:2px 7px; border:1px solid #244; border-radius:4px; font-size:11px; color:#688; }
+  .port.open { color:#ffd166; border-color:#aa0; }
+  .port.cracked { color:#ff4d6d; border-color:#a33; text-shadow:0 0 6px #f44; }
+  .port.hp { color:#3ef2a0; border-color:#2a6; }
+  .feed { height:200px; overflow:auto; font-size:11px; color:#7c9; white-space:pre-wrap; border-top:1px dashed #163; padding-top:6px; }
+  .feed .me { color:#aef; }
+  .map { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .node { font-size:34px; } .arrow { color:#ffd166; letter-spacing:2px; animation:pulse 1.1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:.3;} 50%{opacity:1;} }
+  .chat { padding:8px 14px; margin:0 10px 12px; background:var(--panel); border:1px solid var(--line); border-radius:8px; max-height:150px; overflow:auto; }
+  .chat .c1{color:var(--p1);} .chat .c2{color:var(--p2);} .chat .sys{color:#889;}
+  .hint { display:flex; gap:6px; margin:6px 0; }
+  .hint input { flex:1; background:#06100c; border:1px solid #163; color:var(--txt); padding:4px 8px; border-radius:4px; font:inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>A I · D U E L</h1>
+  <div><span class="turn" id="turn">ход 1</span> &nbsp; <span class="win" id="win"></span></div>
+  <div><button onclick="send({type:'reset'})">новый матч</button></div>
+</header>
+
+<div class="grid">
+  <section class="panel term p1" id="pane-P1"></section>
+  <section class="panel map">
+    <div class="node" style="color:var(--p1)">🖥</div>
+    <div id="mapline" class="arrow">— — — ⚡ — — —</div>
+    <div class="node" style="color:var(--p2)">🖥</div>
+    <div style="margin-top:14px;font-size:11px;color:#678;text-align:center">
+      цель: украсть флаг (root) или обрушить HP
+    </div>
+  </section>
+  <section class="panel term p2" id="pane-P2"></section>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div style="margin:0 10px 20px;display:flex;gap:16px;flex-wrap:wrap">
+  <div class="hint" style="flex:1">
+    <input id="h1" placeholder="подсказка Джарвису (P1)…">
+    <button onclick="hint('P1')">шепнуть P1</button>
+  </div>
+  <div class="hint" style="flex:1">
+    <input id="h2" placeholder="подсказка Nemesis (P2)…">
+    <button onclick="hint('P2')">шепнуть P2</button>
+  </div>
+</div>
+
+<script>
+const ws = new WebSocket('ws://' + location.host);
+ws.onopen = () => log('подключено к арене');
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.type==='state') render(m.match); if (m.type==='over') document.getElementById('win').textContent = '🏆 '+m.winner; };
+function send(o){ ws.send(JSON.stringify(o)); }
+function hint(slot){ const el=document.getElementById(slot==='P1'?'h1':'h2'); if(el.value.trim()){ send({type:'hint',slot,text:el.value.trim()}); el.value=''; } }
+function log(t){ console.log(t); }
+
+function pane(slot, s){
+  const cls = slot==='P1'?'p1':'p2';
+  const ports = s.ports.map(p=>`<span class="port ${p.cracked?'cracked':p.open?'open':''}">${p.n}${p.cracked?'✗':p.open?'○':''}${p.honeypot?'🍯':''}</span>`).join('');
+  return `<h2>${slot==='P1'?'ДЖАРВИС':'NEMESIS'} · ${slot}</h2>
+    <div class="bars">HP ${s.hp} · ⚡${s.energy} · firewall ${s.firewall} · доступ соперника: <b>${s.access}</b> · ${s.rules}</div>
+    <div class="bar"><i style="width:${s.hp}%"></i></div>
+    <div class="ports">${ports}</div>`;
+}
+function render(m){
+  document.getElementById('turn').textContent = 'ход '+m.turn;
+  if(m.winner) document.getElementById('win').textContent = '🏆 '+m.winner;
+  document.getElementById('pane-P1').innerHTML = pane('P1', m.servers.P1) + feed('P1', m.log);
+  document.getElementById('pane-P2').innerHTML = pane('P2', m.servers.P2) + feed('P2', m.log);
+  document.getElementById('chat').innerHTML = m.chat.map(c=>{
+    const k = c.who.startsWith('P1')?'c1':c.who.startsWith('P2')?'c2':'sys';
+    return `<div class="${k}">${c.who} » ${esc(c.text)}</div>`;
+  }).join('') || '<div class="sys">— чат пуст —</div>';
+  const chat=document.getElementById('chat'); chat.scrollTop=chat.scrollHeight;
+}
+function feed(slot, log){
+  const rows = log.filter(l=>l.who===slot).slice(-12)
+    .map(l=>`<div class="me">t${l.turn} ${esc(l.action)}</div><div>  ${esc(l.text)}</div>`).join('');
+  return `<div class="feed">${rows||'—'}</div>`;
+}
+function esc(s){ return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+</script>
+</body>
+</html>

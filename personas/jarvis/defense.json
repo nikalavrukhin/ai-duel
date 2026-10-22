@@ -1,0 +1,7 @@
+{
+  "rules": [
+    { "when": "scan", "portN": 22, "do": "close_port", "doPortN": 22 },
+    { "when": "crack", "portN": 443, "if": { "field": "firewall", "op": "<", "value": 3 }, "do": "raise_firewall" },
+    { "when": "steal_flag", "do": "serve_fake_flag" }
+  ]
+}
